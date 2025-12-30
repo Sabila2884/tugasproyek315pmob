@@ -44,6 +44,9 @@ android {
 
 dependencies {
 
+    // Chart (Grafik Pola Makan)
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.11.0")
@@ -55,6 +58,8 @@ dependencies {
 
     // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")
+
+
 
     implementation("com.cloudinary:cloudinary-android:1.30.0") {
         exclude(group = "com.linkedin.android.litr", module = "litr")

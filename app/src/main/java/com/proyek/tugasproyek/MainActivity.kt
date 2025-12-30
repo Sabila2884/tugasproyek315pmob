@@ -7,14 +7,19 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.view.View
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.*
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.bumptech.glide.Glide
@@ -24,6 +29,8 @@ import com.google.firebase.database.FirebaseDatabase
 import com.proyek.tugasproyek.databinding.ActivityMainBinding
 import de.hdodenhof.circleimageview.CircleImageView
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,15 +39,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var db: FirebaseDatabase
     private lateinit var imageUri: Uri
 
-    // Launcher untuk galeri
-    private val galleryLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { uploadImage(it) }
-    }
+    private val galleryLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { uploadImage(it) }
+        }
 
-    // Launcher untuk kamera
-    private val cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) uploadImage(imageUri)
-    }
+    private val cameraLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            if (success) uploadImage(imageUri)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,7 +59,6 @@ class MainActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         db = FirebaseDatabase.getInstance()
 
-        // Proteksi login
         if (auth.currentUser == null) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
@@ -63,37 +69,34 @@ class MainActivity : AppCompatActivity() {
         setupHeader()
         setupNavigationDrawer()
         setupLogoutButton()
+        setupQuickAddMeal()
+        loadWeeklyMealChart()
+        loadTodayMealSummary()
     }
 
-    // =================== SETUP TOOLBAR + DRAWER ===================
-    private fun setupToolbarAndDrawer() {
-        val toolbar = binding.includeToolbar.toolbar
-        setSupportActionBar(toolbar)
+    // ================= QUICK ADD MEAL =================
+    private fun setupQuickAddMeal() {
+        binding.quickAddMeal.setOnClickListener {
+            startActivity(Intent(this, MealActivity::class.java))
+        }
+    }
 
-        // Drawer toggle (hamburger menu)
+    // ================= TOOLBAR + DRAWER =================
+    private fun setupToolbarAndDrawer() {
+        setSupportActionBar(binding.includeToolbar.toolbar)
+
         val toggle = ActionBarDrawerToggle(
             this,
             binding.drawerLayout,
-            toolbar,
+            binding.includeToolbar.toolbar,
             R.string.open_drawer,
             R.string.close_drawer
         )
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
-
-        // Klik ikon toolbar (Dashboard = kembali ke MainActivity)
-        toolbar.setNavigationOnClickListener {
-            if (this !is MainActivity) {
-                val intent = Intent(this, MainActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                startActivity(intent)
-            } else {
-                binding.drawerLayout.open() // Kalau sudah di MainActivity, buka drawer saja
-            }
-        }
     }
 
-    // =================== SETUP HEADER ===================
+    // ================= HEADER =================
     private fun setupHeader() {
         val header = binding.navView.getHeaderView(0)
         val imageProfile = header.findViewById<CircleImageView>(R.id.imageProfile)
@@ -103,15 +106,17 @@ class MainActivity : AppCompatActivity() {
 
         loadUserProfile(imageProfile, tvName)
 
-        val imageClickListener = {
+        val imageClick = {
             if (checkPermissions()) showImagePickerDialog()
         }
-        imageProfile.setOnClickListener { imageClickListener() }
-        addIcon.setOnClickListener { imageClickListener() }
+
+        imageProfile.setOnClickListener { imageClick() }
+        addIcon.setOnClickListener { imageClick() }
 
         val editName = {
             val editText = EditText(this)
             editText.setText(tvName.text)
+
             AlertDialog.Builder(this)
                 .setTitle("Edit Nama")
                 .setView(editText)
@@ -121,7 +126,6 @@ class MainActivity : AppCompatActivity() {
                         tvName.text = newName
                         val uid = auth.currentUser?.uid ?: return@setPositiveButton
                         db.reference.child("users").child(uid).child("name").setValue(newName)
-                        Toast.makeText(this, "Nama berhasil diperbarui", Toast.LENGTH_SHORT).show()
                     }
                 }
                 .setNegativeButton("Batal", null)
@@ -132,28 +136,100 @@ class MainActivity : AppCompatActivity() {
         editIcon.setOnClickListener { editName() }
     }
 
-    // =================== NAVIGATION DRAWER ===================
-    private fun setupNavigationDrawer() {
-        binding.navView.setNavigationItemSelectedListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.nav_dashboard -> {
-                    // Dashboard = MainActivity
-                    if (this !is MainActivity) {
-                        val intent = Intent(this, MainActivity::class.java)
-                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        startActivity(intent)
+    private fun setupChart(
+        chart: LineChart,
+        entries: List<Entry>,
+        labels: List<String>
+    ) {
+        val dataSet = LineDataSet(entries, "Kalori Harian")
+
+        dataSet.apply {
+            setDrawCircles(true)
+            setDrawValues(false)
+            lineWidth = 2f
+            circleRadius = 4f
+            color = resources.getColor(R.color.purple_500, null)
+            setCircleColor(color)
+        }
+
+        chart.apply {
+            data = LineData(dataSet)
+            description.isEnabled = false
+            legend.isEnabled = true
+
+            xAxis.apply {
+                position = XAxis.XAxisPosition.BOTTOM
+                granularity = 1f
+                valueFormatter = IndexAxisValueFormatter(labels)
+            }
+
+            axisRight.isEnabled = false
+            animateX(800)
+            invalidate()
+        }
+    }
+
+    private fun loadWeeklyMealChart() {
+        val uid = auth.currentUser?.uid ?: return
+
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val calendar = Calendar.getInstance()
+
+        val dates = mutableListOf<String>()
+        val labels = mutableListOf<String>()
+
+        for (i in 6 downTo 0) {
+            calendar.time = Date()
+            calendar.add(Calendar.DAY_OF_YEAR, -i)
+
+            val date = sdf.format(calendar.time)
+            dates.add(date)
+
+            val label = java.text.SimpleDateFormat("dd/MM", Locale.getDefault())
+                .format(calendar.time)
+            labels.add(label)
+        }
+
+        val entries = mutableListOf<Entry>()
+        val chart = binding.mealChart
+
+        var index = 0
+
+        for (date in dates) {
+            db.reference.child("users").child(uid)
+                .child("meals").child(date)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    var totalCalories = 0
+
+                    for (mealSnap in snapshot.children) {
+                        totalCalories += mealSnap.child("calorie")
+                            .getValue(Int::class.java) ?: 0
                     }
-                    binding.drawerLayout.closeDrawers()
-                    true
+
+                    entries.add(Entry(index.toFloat(), totalCalories.toFloat()))
+                    index++
+
+                    if (entries.size == dates.size) {
+                        setupChart(chart, entries, labels)
+                    }
                 }
+        }
+    }
+
+
+
+    // ================= NAVIGATION =================
+    private fun setupNavigationDrawer() {
+        binding.navView.setNavigationItemSelectedListener {
+            when (it.itemId) {
+                R.id.nav_dashboard -> true
                 R.id.nav_profile -> {
                     startActivity(Intent(this, ProfileActivity::class.java))
-                    binding.drawerLayout.closeDrawers()
                     true
                 }
                 R.id.nav_meal -> {
                     startActivity(Intent(this, MealActivity::class.java))
-                    binding.drawerLayout.closeDrawers()
                     true
                 }
                 R.id.nav_logout -> {
@@ -167,27 +243,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // =================== LOGOUT BUTTON ===================
-    private fun setupLogoutButton() {
-        binding.btnLogout.setOnClickListener {
-            auth.signOut()
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+    // ================= DASHBOARD =================
+    private fun loadTodayMealSummary() {
+        val uid = auth.currentUser?.uid ?: return
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+        db.reference.child("users").child(uid).child("meals").child(today)
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    var totalCalories = 0
+                    var mealCount = 0
+                    var lastTime = ""
+
+                    for (meal in snapshot.children) {
+                        mealCount++
+                        totalCalories += meal.child("calorie").getValue(Int::class.java) ?: 0
+                        val time = meal.child("time").getValue(String::class.java) ?: ""
+                        if (time > lastTime) lastTime = time
+                    }
+
+                    binding.tvTodayMealCount.text = "🍽 Jumlah makan: $mealCount kali"
+                    binding.tvTodayCalories.text = "🔥 Total kalori: $totalCalories kkal"
+                    binding.tvLastMealTime.text =
+                        if (lastTime.isNotEmpty()) "⏰ Terakhir makan: $lastTime"
+                        else "⏰ Terakhir makan: -"
+
+                    updateMealStatus(mealCount)
+                    binding.quickAddMeal.visibility =
+                        if (mealCount == 0) View.VISIBLE else View.GONE
+                }
+
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+    }
+
+    private fun updateMealStatus(count: Int) {
+        binding.tvMealStatus.text = when {
+            count == 0 -> "Status Pola Makan: ❌ Belum Makan Hari Ini"
+            count < 3 -> "Status Pola Makan: ⚠️ Belum Konsisten"
+            else -> "Status Pola Makan: ✅ Konsisten"
         }
     }
 
-    // =================== PERMISSIONS ===================
+    // ================= PERMISSION & IMAGE =================
     private fun checkPermissions(): Boolean {
         val list = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            list.add(Manifest.permission.CAMERA)
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) list.add(Manifest.permission.CAMERA)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED)
-                list.add(Manifest.permission.READ_MEDIA_IMAGES)
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
-                list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+                != PackageManager.PERMISSION_GRANTED
+            ) list.add(Manifest.permission.READ_MEDIA_IMAGES)
         }
 
         if (list.isNotEmpty()) {
@@ -197,16 +307,12 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    // =================== IMAGE PICKER ===================
     private fun showImagePickerDialog() {
-        val options = arrayOf("Kamera", "Galeri")
         AlertDialog.Builder(this)
             .setTitle("Pilih Gambar")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> openCamera()
-                    1 -> galleryLauncher.launch("image/*")
-                }
+            .setItems(arrayOf("Kamera", "Galeri")) { _, which ->
+                if (which == 0) openCamera()
+                else galleryLauncher.launch("image/*")
             }
             .show()
     }
@@ -217,51 +323,46 @@ class MainActivity : AppCompatActivity() {
             ".jpg",
             getExternalFilesDir(Environment.DIRECTORY_PICTURES)
         )
-        imageUri = FileProvider.getUriForFile(this, "${packageName}.provider", file)
+        imageUri = FileProvider.getUriForFile(this, "$packageName.provider", file)
         cameraLauncher.launch(imageUri)
     }
 
-    // =================== LOAD & UPLOAD PROFILE ===================
-    private fun loadUserProfile(imageProfile: CircleImageView, tvName: TextView) {
+    private fun loadUserProfile(img: CircleImageView, tvName: TextView) {
         val uid = auth.currentUser?.uid ?: return
         db.reference.child("users").child(uid)
-            .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+            .addListenerForSingleValueEvent(object :
+                com.google.firebase.database.ValueEventListener {
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                    val name = snapshot.child("name").getValue(String::class.java)
+                    tvName.text = snapshot.child("name").getValue(String::class.java) ?: "User"
                     val url = snapshot.child("profileUrl").getValue(String::class.java)
-                    tvName.text = name ?: "User"
                     if (!url.isNullOrEmpty())
-                        Glide.with(this@MainActivity).load(url).into(imageProfile)
+                        Glide.with(this@MainActivity).load(url).into(img)
                 }
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
     }
 
     private fun uploadImage(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return
-            Thread {
-                try {
-                    val result = CloudinaryHelper.cloudinary.uploader().upload(inputStream, ObjectUtils.emptyMap())
-                    val url = result["secure_url"].toString()
-                    val uid = auth.currentUser?.uid ?: return@Thread
-                    db.reference.child("users").child(uid).child("profileUrl").setValue(url)
-                    runOnUiThread {
-                        val header = binding.navView.getHeaderView(0)
-                        val imageProfile = header.findViewById<CircleImageView>(R.id.imageProfile)
-                        Glide.with(this@MainActivity).load(url).into(imageProfile)
-                        Toast.makeText(this, "Foto profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    runOnUiThread {
-                        Toast.makeText(this, "Gagal mengunggah gambar", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }.start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Gagal membuka gambar", Toast.LENGTH_SHORT).show()
+        val input = contentResolver.openInputStream(uri) ?: return
+        Thread {
+            val result =
+                CloudinaryHelper.cloudinary.uploader().upload(input, ObjectUtils.emptyMap())
+            val url = result["secure_url"].toString()
+            val uid = auth.currentUser?.uid ?: return@Thread
+            db.reference.child("users").child(uid).child("profileUrl").setValue(url)
+            runOnUiThread {
+                val header = binding.navView.getHeaderView(0)
+                val img = header.findViewById<CircleImageView>(R.id.imageProfile)
+                Glide.with(this).load(url).into(img)
+            }
+        }.start()
+    }
+
+    private fun setupLogoutButton() {
+        binding.btnLogout.setOnClickListener {
+            auth.signOut()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
         }
     }
 }

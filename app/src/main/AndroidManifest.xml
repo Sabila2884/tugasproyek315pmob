@@ -4,10 +4,25 @@
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <!-- Storage / media: untuk Android 13+ gunakan READ_MEDIA_IMAGES -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" android:required="false"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:required="false"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:required="false"/>
+
+    <!-- Storage -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        android:required="false" />
+
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:required="false"/>
+
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:required="false"/>
 
     <!-- Optional camera feature -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
@@ -39,6 +54,10 @@
 
         <!-- Profile Activity -->
         <activity android:name=".ProfileActivity" android:exported="false" />
+
+        <receiver
+            android:name=".MealReminderReceiver"
+            android:exported="false" />
 
 
         <!-- FileProvider untuk kamera/galeri -->

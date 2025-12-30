@@ -28,14 +28,16 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var imageUri: Uri
 
     // Launcher galeri
-    private val galleryLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { uploadImage(it) }
-    }
+    private val galleryLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { uploadImage(it) }
+        }
 
     // Launcher kamera
-    private val cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) uploadImage(imageUri)
-    }
+    private val cameraLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            if (success) uploadImage(imageUri)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,24 +47,27 @@ class ProfileActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         db = FirebaseDatabase.getInstance()
 
+        // ❗ AWAL: sembunyikan form & hasil
+        binding.formProfile.visibility = View.GONE
+        binding.resultProfile.visibility = View.GONE
+
         loadUserProfile()
 
-        // Back button
         binding.ivBack.setOnClickListener { finish() }
 
-        // Klik foto profil atau + icon
         val imageClickListener = {
             if (checkPermissions()) showImagePickerDialog()
         }
         binding.imageProfile.setOnClickListener { imageClickListener() }
         binding.icAdd.setOnClickListener { imageClickListener() }
 
-        // Tombol edit seluruh profil
+        // Edit profil
         binding.icEditProfile.setOnClickListener {
             binding.formProfile.visibility = View.VISIBLE
+            binding.resultProfile.visibility = View.GONE
         }
 
-        // Tombol hapus seluruh profil
+        // Hapus profil
         binding.icDeleteProfile.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Hapus Profil")
@@ -72,25 +77,31 @@ class ProfileActivity : AppCompatActivity() {
                 .show()
         }
 
-        // Tombol simpan
+        // Simpan profil
         binding.btnSaveProfile.setOnClickListener {
             saveProfile()
-            binding.formProfile.visibility = View.GONE
         }
     }
 
-    // Cek permission kamera dan storage
     private fun checkPermissions(): Boolean {
         val list = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            list.add(Manifest.permission.CAMERA)
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) list.add(Manifest.permission.CAMERA)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED)
-                list.add(Manifest.permission.READ_MEDIA_IMAGES)
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_IMAGES
+                ) != PackageManager.PERMISSION_GRANTED
+            ) list.add(Manifest.permission.READ_MEDIA_IMAGES)
         } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
-                list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
 
         if (list.isNotEmpty()) {
@@ -100,36 +111,33 @@ class ProfileActivity : AppCompatActivity() {
         return true
     }
 
-    // Dialog pilih sumber gambar
     private fun showImagePickerDialog() {
         val options = arrayOf("Kamera", "Galeri")
         AlertDialog.Builder(this)
             .setTitle("Pilih Gambar")
             .setItems(options) { _, which ->
-                when (which) {
-                    0 -> openCamera()
-                    1 -> galleryLauncher.launch("image/*")
-                }
+                if (which == 0) openCamera()
+                else galleryLauncher.launch("image/*")
             }
             .show()
     }
 
-    // Buka kamera untuk ambil gambar
     private fun openCamera() {
         val file = File.createTempFile(
             "profile_",
             ".jpg",
             getExternalFilesDir(Environment.DIRECTORY_PICTURES)
         )
-        imageUri = FileProvider.getUriForFile(this, "${packageName}.provider", file)
+        imageUri = FileProvider.getUriForFile(this, "$packageName.provider", file)
         cameraLauncher.launch(imageUri)
     }
 
-    // Load data profil dari Firebase
     private fun loadUserProfile() {
         val uid = auth.currentUser?.uid ?: return
         db.reference.child("users").child(uid)
-            .addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
+            .addListenerForSingleValueEvent(object :
+                com.google.firebase.database.ValueEventListener {
+
                 override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
                     val name = snapshot.child("name").getValue(String::class.java)
                     val weight = snapshot.child("weight").getValue(String::class.java)
@@ -137,10 +145,19 @@ class ProfileActivity : AppCompatActivity() {
                     val goal = snapshot.child("goal").getValue(String::class.java)
                     val url = snapshot.child("profileUrl").getValue(String::class.java)
 
+                    if (name.isNullOrEmpty()) {
+                        binding.formProfile.visibility = View.VISIBLE
+                        binding.resultProfile.visibility = View.GONE
+                    } else {
+                        binding.formProfile.visibility = View.GONE
+                        binding.resultProfile.visibility = View.VISIBLE
+                    }
+
                     binding.etName.setText(name)
                     binding.etWeight.setText(weight)
                     binding.etHeight.setText(height)
                     binding.etGoal.setText(goal)
+
                     binding.tvUserName.text = name ?: "User"
                     binding.tvNameResult.text = "Nama: ${name ?: "-"}"
                     binding.tvWeightResult.text = "Berat Badan: ${weight ?: "-"}"
@@ -148,41 +165,37 @@ class ProfileActivity : AppCompatActivity() {
                     binding.tvGoalResult.text = "Tujuan: ${goal ?: "-"}"
 
                     if (!url.isNullOrEmpty())
-                        Glide.with(this@ProfileActivity).load(url).into(binding.imageProfile)
-                    else
-                        binding.imageProfile.setImageResource(R.drawable.account_svg)
+                        Glide.with(this@ProfileActivity).load(url)
+                            .into(binding.imageProfile)
                 }
 
                 override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
             })
     }
 
-    // Upload gambar ke Cloudinary
     private fun uploadImage(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return
-            Thread {
-                try {
-                    val result = CloudinaryHelper.cloudinary.uploader().upload(inputStream, ObjectUtils.emptyMap())
-                    val url = result["secure_url"].toString()
-                    val uid = auth.currentUser?.uid ?: return@Thread
-                    db.reference.child("users").child(uid).child("profileUrl").setValue(url)
-                    runOnUiThread {
-                        Glide.with(this@ProfileActivity).load(url).into(binding.imageProfile)
-                        Toast.makeText(this, "Foto profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    runOnUiThread { Toast.makeText(this, "Gagal mengunggah gambar", Toast.LENGTH_SHORT).show() }
+        val inputStream = contentResolver.openInputStream(uri) ?: return
+        Thread {
+            try {
+                val result =
+                    CloudinaryHelper.cloudinary.uploader()
+                        .upload(inputStream, ObjectUtils.emptyMap())
+                val url = result["secure_url"].toString()
+                val uid = auth.currentUser?.uid ?: return@Thread
+                db.reference.child("users").child(uid).child("profileUrl").setValue(url)
+
+                runOnUiThread {
+                    Glide.with(this).load(url).into(binding.imageProfile)
+                    Toast.makeText(this, "Foto profil diperbarui", Toast.LENGTH_SHORT).show()
                 }
-            }.start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Gagal membuka gambar", Toast.LENGTH_SHORT).show()
-        }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Gagal upload gambar", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
-    // Simpan profil ke Firebase
     private fun saveProfile() {
         val name = binding.etName.text.toString().trim()
         val weight = binding.etWeight.text.toString().trim()
@@ -195,48 +208,39 @@ class ProfileActivity : AppCompatActivity() {
         }
 
         val uid = auth.currentUser?.uid ?: return
-        val userRef = db.reference.child("users").child(uid)
-        userRef.child("name").setValue(name)
-        userRef.child("weight").setValue(weight)
-        userRef.child("height").setValue(height)
-        userRef.child("goal").setValue(goal)
+        val ref = db.reference.child("users").child(uid)
 
-        // Update tampilan
+        ref.child("name").setValue(name)
+        ref.child("weight").setValue(weight)
+        ref.child("height").setValue(height)
+        ref.child("goal").setValue(goal)
+
         binding.tvUserName.text = name
         binding.tvNameResult.text = "Nama: $name"
         binding.tvWeightResult.text = "Berat Badan: $weight"
         binding.tvHeightResult.text = "Tinggi Badan: $height"
         binding.tvGoalResult.text = "Tujuan: $goal"
 
+        binding.formProfile.visibility = View.GONE
         binding.resultProfile.visibility = View.VISIBLE
+
         Toast.makeText(this, "Profil berhasil disimpan", Toast.LENGTH_SHORT).show()
     }
 
-    // Hapus semua data profil
     private fun clearProfile() {
         val uid = auth.currentUser?.uid ?: return
-        val userRef = db.reference.child("users").child(uid)
+        val ref = db.reference.child("users").child(uid)
+        ref.removeValue()
 
-        // Hapus field di Firebase
-        userRef.child("name").removeValue()
-        userRef.child("weight").removeValue()
-        userRef.child("height").removeValue()
-        userRef.child("goal").removeValue()
-        userRef.child("profileUrl").removeValue()
+        binding.formProfile.visibility = View.VISIBLE
+        binding.resultProfile.visibility = View.GONE
 
-        // Reset tampilan lokal
         binding.etName.setText("")
         binding.etWeight.setText("")
         binding.etHeight.setText("")
         binding.etGoal.setText("")
-        binding.tvUserName.text = "User"
-        binding.tvNameResult.text = "Nama: -"
-        binding.tvWeightResult.text = "Berat Badan: -"
-        binding.tvHeightResult.text = "Tinggi Badan: -"
-        binding.tvGoalResult.text = "Tujuan: -"
         binding.imageProfile.setImageResource(R.drawable.account_svg)
 
-        binding.resultProfile.visibility = View.GONE
-        Toast.makeText(this, "Profil berhasil dihapus", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Profil dihapus", Toast.LENGTH_SHORT).show()
     }
 }

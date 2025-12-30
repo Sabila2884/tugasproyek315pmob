@@ -1,9 +1,17 @@
 package com.proyek.tugasproyek
 
+import android.app.AlarmManager
 import android.app.DatePickerDialog
+import android.app.PendingIntent
 import android.app.TimePickerDialog
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -31,6 +39,8 @@ class MealActivity : AppCompatActivity() {
         binding = ActivityMealBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        requestNotificationPermission()
+
         db = FirebaseDatabase.getInstance()
         auth = FirebaseAuth.getInstance()
 
@@ -56,10 +66,92 @@ class MealActivity : AppCompatActivity() {
         // Tombol simpan
         binding.btnSaveMeal.setOnClickListener { saveMeal() }
 
+        binding.btnReminder.setOnClickListener {
+            setMealReminder(7,0)
+            setMealReminder(12,0)
+            setMealReminder(18,0)
+            Toast.makeText(this, "Pengingat makan aktif", Toast.LENGTH_SHORT).show()
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    200
+                )
+            }
+        }
+
+
         Log.d("AUTH_TEST", "UID = ${auth.currentUser?.uid}")
 
         loadMeals()
     }
+
+    private fun setMealReminder(hour: Int, minute: Int) {
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+
+        // ANDROID 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Toast.makeText(
+                    this,
+                    "Izinkan exact alarm di pengaturan",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivity(intent)
+                return
+            }
+        }
+
+        val intent = Intent(this, MealReminderReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            hour,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+
+            if (before(Calendar.getInstance())) {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
+    }
+
+
+    private fun requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    1001
+                )
+            }
+        }
+    }
+
 
     private fun saveMeal() {
         val type = binding.etType.text.toString().trim()
@@ -79,6 +171,9 @@ class MealActivity : AppCompatActivity() {
             return
         }
 
+        val caloriePerPortion = 100 // default
+        val totalCalorie = portion * caloriePerPortion
+
         val uid = auth.currentUser?.uid
         if (uid == null) {
             Toast.makeText(this, "User belum login", Toast.LENGTH_SHORT).show()
@@ -88,12 +183,13 @@ class MealActivity : AppCompatActivity() {
         val mealData = mapOf(
             "food" to name,
             "portion" to portion,
-            "time" to time
+            "time" to time,
+            "calorie" to totalCalorie
         )
 
         val userRef = db.reference.child("users").child(uid).child("meals")
 
-        // Hapus data lama jika edit
+        // Kalau edit data lama
         editingMealKey?.let { key ->
             val (oldDate, oldType) = key
             if (oldDate != date || oldType != type) {
@@ -123,6 +219,11 @@ class MealActivity : AppCompatActivity() {
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val meals = mutableListOf<Meal>()
+                    var totalCalorieToday = 0
+                    var mealCountToday = 0
+
+                    val today = dateFormat.format(Date())
+
                     for (dateSnap in snapshot.children) {
                         val date = dateSnap.key ?: continue
                         for (typeSnap in dateSnap.children) {
@@ -130,12 +231,25 @@ class MealActivity : AppCompatActivity() {
                             val food = typeSnap.child("food").getValue(String::class.java) ?: ""
                             val portion = typeSnap.child("portion").getValue(Int::class.java) ?: 0
                             val time = typeSnap.child("time").getValue(String::class.java) ?: ""
-                            meals.add(Meal(date, type, food, portion, time))
+                            val calorie = typeSnap.child("calorie").getValue(Int::class.java) ?: 0
+
+                            val meal = Meal(date, type, food, portion, time, calorie)
+                            meals.add(meal)
+
+                            if (date == today) {
+                                totalCalorieToday += calorie
+                                mealCountToday++
+                            }
                         }
                     }
+
                     meals.sortWith(compareBy({ it.date }, { it.time }))
                     adapter.submitList(meals)
+
+                    binding.tvTotalCalorie.text = "Total Kalori: $totalCalorieToday kkal"
+                    binding.tvMealCount.text = "Jumlah Makan: $mealCountToday kali"
                 }
+
 
                 override fun onCancelled(error: DatabaseError) {}
             })

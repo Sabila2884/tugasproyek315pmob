@@ -139,15 +139,59 @@
             android:layout_marginBottom="12dp"/>
 
         <Button
+            android:id="@+id/btnReminder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:elevation="0dp"
+            android:text="Aktifkan Pengingat Makan"/>
+
+        <Button
             android:id="@+id/btnSaveMeal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Simpan"
             android:backgroundTint="@color/purple_500"
             android:textColor="@android:color/white"
+            android:elevation="8dp"
             android:padding="12dp"
             android:textStyle="bold"/>
     </LinearLayout>
+
+    <!-- Ringkasan Harian -->
+    <LinearLayout
+        android:id="@+id/summaryBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_login_box"
+        android:elevation="6dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ringkasan Hari Ini"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:id="@+id/tvTotalCalorie"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Total Kalori: 0 kkal"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/tvMealCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Jumlah Makan: 0 kali"
+            android:textSize="14sp"/>
+    </LinearLayout>
+
 
     <!-- RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView

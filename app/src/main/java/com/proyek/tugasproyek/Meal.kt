@@ -5,6 +5,7 @@ data class Meal(
     val type: String = "",
     val food: String = "",
     val portion: Int = 0,
-    val time: String = ""
+    val time: String = "",
+    val calorie: Int = 0
 )
 
